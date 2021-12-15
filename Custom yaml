@@ -1,0 +1,32 @@
+pets/{id}/move:
+  test1:
+    pet#id:
+      - stay
+      - at
+      - home
+/go:
+  test1:
+    homeId:
+      - 123
+      - 124
+      - 134
+    home#country: "mumu"
+    additionalProperties:
+      element: "metadata"
+      mapValues:
+        test: "bubu"
+        anotherTest: "juju"
+    expectedResponseCode: 200
+    oneOfSelection:
+      pet#type: "Dog"
+    output:
+      - homeId: home#id
+    verify:
+      pet#name: "Baby"
+      pet#id: "[0-9]+"
+  test2:
+    homeId:
+      - 123
+      - 124
+    home#country: ${homeId}
+    expectedResponseCode: 200
