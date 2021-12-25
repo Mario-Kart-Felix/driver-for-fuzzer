@@ -1,0 +1,31 @@
+//
+
+Locking the mutex will block the thread, which is generally something you want to avoid in async code as it can prevent other tasks from running.
+As seen in the compiler error, the mutex guard that you get by locking it can't be shared between threads safely, so it won't compile anyways.
+Both of these issues can be fixed by using a Mutex designed for async code. Since you're already using something from the futures crate, you can just use futures::lock::Mutex, changing client.lock().unwrap() to client.lock().await. This version of the lock will yield control back to the task executor when it needs to wait rather than blocking the thread, and will also allow it to be shared between threads if necessary.
+
+The complete version of the code looks like this - however, it's not very useful because you're never actually executing the future returned by do_something (note that you're not doing anything with the returned future) and even if you did, it would immediately deadlock due to the recursion:
+
+use std::sync::Arc;
+use std::future::Future;
+use futures::future::{BoxFuture, FutureExt};
+use futures::lock::Mutex;
+
+struct Client {}
+
+impl Client {}
+
+fn do_something<'a>(
+        client: Arc<Mutex<Client>>,
+) -> BoxFuture<'a, std::result::Result<(), ()>> {
+    async move {
+        let c = client.lock().await;
+        do_something(client.clone()).await;
+        Ok(())
+    }.boxed()
+}
+
+fn main() {
+    let c = Arc::new(Mutex::new(Client {}));
+    do_something(c.clone());
+}
