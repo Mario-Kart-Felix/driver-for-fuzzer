@@ -1,0 +1,71 @@
+use std::sync::Arc;
+use std::future::Future;
+use futures::future::{BoxFuture, FutureExt};
+use futures::lock::Mutex;
+
+struct Client {}
+
+impl Client {}
+
+fn do_something<'a>(
+        client: Arc<Mutex<Client>>,
+) -> BoxFuture<'a, std::result::Result<(), ()>> {
+    async move {
+        let c = client.lock().await;
+        do_something(client.clone()).await;
+        Ok(())
+    }.boxed()
+}
+
+fn main() {
+    let c = Arc::new(Mutex::new(Client {}));
+    do_something(c.clone());
+}
+Compiling playground v0.0.1 (/playground)
+warning: unused import: `std::future::Future`
+ --> src/lib.rs:2:5
+  |
+2 | use std::future::Future;
+  |     ^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused variable: `c`
+  --> src/lib.rs:14:13
+   |
+14 |         let c = client.lock().await;
+   |             ^ help: if this is intentional, prefix it with an underscore: `_c`
+   |
+   = note: `#[warn(unused_variables)]` on by default
+
+warning: struct is never constructed: `Client`
+ --> src/lib.rs:6:8
+  |
+6 | struct Client {}
+  |        ^^^^^^
+  |
+  = note: `#[warn(dead_code)]` on by default
+
+warning: function is never used: `do_something`
+  --> src/lib.rs:10:4
+   |
+10 | fn do_something<'a>(
+   |    ^^^^^^^^^^^^
+
+warning: function is never used: `main`
+  --> src/lib.rs:20:4
+   |
+20 | fn main() {
+   |    ^^^^
+
+warning: unused `Result` that must be used
+  --> src/lib.rs:15:9
+   |
+15 |         do_something(client.clone()).await;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_must_use)]` on by default
+   = note: this `Result` may be an `Err` variant, which should be handled
+
+warning: `playground` (lib) generated 6 warnings
+    Finished release [optimized] target(s) in 2.19s
