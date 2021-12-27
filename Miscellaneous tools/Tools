@@ -1,0 +1,20 @@
+Miscellaneous tools
+Apart from the tools mentioned, there are other tools that can be of aid to the guerilla band:
+
+■
+Protocol and software fuzzers, to find indicators for buffer overflows which can lead to the identification of zero-day vulnerabilities.
+
+■
+SQL-injection mappers, that automatically verify web application parameters for possible SQL-injection attacks.
+
+■
+C2 frameworks, that help set up a structure to communicate with compromised machines.
+
+■
+Packet capturing tools, that retrieve network data packets for analysis.
+
+■
+Collaboration tools, to provide a framework where multiple members of the hacker group can share information securely.
+
+■
+Exploitation frameworks, to gather, develop, and share exploits among members of the guerilla band.
