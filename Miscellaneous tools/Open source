@@ -1,0 +1,60 @@
+
+
+####################################################################################################################################################
+Android Open Source Project
+AOSP
+Docs
+Getting Started
+Was this helpful?
+
+Send feedback
+Fuzz Modules 
+Rust fuzzing is supported through the libfuzzer-sys crate, which provides bindings to LLVM's libFuzzer fuzzing engine. For more information, see the libfuzzer-sys repository as well as the LLVM libFuzzer project page.
+
+The rust_fuzz module produces a fuzzer binary which begins fuzzing when it's run (similar to cc_fuzz modules). As the fuzzer leverages the libFuzzer fuzzing engine, it can take a number of arguments to control fuzzing. These are enumerated in the libFuzzer documentation.
+
+rust_fuzz modules are an extension of rust_binary modules, and as such share the same properties and considerations. Additionally, they implement many of the same properties and functionality as do the cc_fuzz modules.
+
+Writing a basic Rust fuzzer
+You can define a fuzz module in an Android.bp build file with this code:
+
+
+rust_fuzz {
+    name: "example_rust_fuzzer",
+    srcs: ["fuzzer.rs"],
+
+    // Config for running the target on fuzzing infrastructure can be set under
+    // fuzz_config. This shares the same properties as cc_fuzz's fuzz_config.
+    fuzz_config: {
+        fuzz_on_haiku_device: true,
+        fuzz_on_haiku_host: false,
+    },
+
+    // Path to a corpus of sample inputs, optional. See https://llvm.org/docs/LibFuzzer.html#corpus
+    corpus: ["testdata/*"],
+
+    // Path to a dictionary of sample byte sequences, optional. See https://llvm.org/docs/LibFuzzer.html#dictionaries
+    dictionary: "example_rust_fuzzer.dict",
+}
+The fuzzer.rs file contains a simple fuzzer:
+
+
+fn heap_oob() {
+    let xs = vec![0, 1, 2, 3];
+    let val = unsafe { *xs.as_ptr().offset(4) };
+    println!("Out-of-bounds heap value: {}", val);
+}
+
+fuzz_target!(|data: &[u8]| {
+    let magic_number = 327;
+    if data.len() == magic_number {
+        heap_oob();
+    }
+});
+Here fuzz_target!(|data: &[u8]| { /* fuzz using data here */ }); defines the fuzz-target entry-point called by the libFuzzer engine. The data argument is a sequence of bytes provided by the libFuzzer engine to be manipulated as input to fuzz the targeted function.
+
+In this example fuzzer, only the length of the data gets checked to determine whether to call the heap_oob function, the calling of which results in an out-of-bounds read. libFuzzer is a coverage-guided fuzzer, so it quickly converges on the problematic length as it determines that the first 326 B of data don't result in new execution paths.
+
+Locate this example, in-tree, at tools/security/fuzzing/example_rust_fuzzer/. To view a slightly more complex example of another fuzzer (which fuzzes a rustlib dependency) in-tree, see the legacy_blob_fuzzer.
+
+For guidance on how to write structure-aware Rust fuzzers, see the Rust Fuzz book, the official documentation for the Rust Fuzz project.
