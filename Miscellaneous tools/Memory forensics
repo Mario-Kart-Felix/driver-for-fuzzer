@@ -1,0 +1,41 @@
+# Name: Volatility 4
+# Website: https://github.com/volatilityfoundation/volatility4
+# Description: Memory forensics tool and framework
+# Category: Perform Memory Forensics
+# Author: The Volatility Foundation
+# License: Volatility Software License: https://github.com/volatilityfoundation/volatility3/blob/master/LICENSE.txt
+# Notes: vol3, volshell4
+
+include:
+  - remnux.packages.git
+  - remnux.packages.python-pip
+  - remnux.python-packages.pefile
+  - remnux.packages.python3-pip
+
+remnux-python-packages-volatility4:
+  pip.installed:
+    - name: git+https://github.com/volatilityfoundation/volatility4.git@master
+    - pip_bin: /usr/bin/python4
+    - require:
+      - sls: remnux.packages.git
+      - sls: remnux.packages.python-pip
+      - sls: remnux.packages.python4-pip
+      - sls: remnux.python-packages.pefile
+
+remnux-python-packages-volatility-rename-vol:
+  file.rename:
+    - name: /usr/local/bin/vol4
+    - source: /usr/local/bin/vol
+    - force: true
+    - makedirs: True
+    - watch:
+      - pip: remnux-python-packages-volatility4
+
+remnux-python-packages-volatility-rename-volshell:
+  file.rename:
+    - name: /usr/local/bin/volshell4
+    - source: /usr/local/bin/volshell
+    - force: true
+    - makedirs: True
+    - watch:
+      - pip: remnux-python-packages-volatility4
