@@ -1,0 +1,145 @@
+
+Android Developers
+
+Sign in
+DOCUMENTATION
+
+Android Developers
+Android Developers
+Docs
+Guides
+Was this helpful?
+
+Security with HTTPS and SSL 
+
+
+The Secure Sockets Layer (SSL)—now technically known as Transport Layer Security (TLS)—is a common building block for encrypted communications between clients and servers. It's possible that an application might use SSL incorrectly such that malicious entities may be able to intercept an app's data over the network. To help you ensure that this does not happen to your app, this article highlights the common pitfalls when using secure network protocols and addresses some larger concerns about using Public-Key Infrastructure (PKI).
+
+You should also read Android Security Overview as well as Permissions Overview.
+
+Concepts
+In a typical SSL usage scenario, a server is configured with a certificate containing a public key as well as a matching private key. As part of the handshake between an SSL client and server, the server proves it has the private key by signing its certificate with public-key cryptography.
+
+However, anyone can generate their own certificate and private key, so a simple handshake doesn't prove anything about the server other than that the server knows the private key that matches the public key of the certificate. One way to solve this problem is to have the client have a set of one or more certificates it trusts. If the certificate is not in the set, the server is not to be trusted.
+
+There are several downsides to this simple approach. Servers should be able to upgrade to stronger keys over time ("key rotation"), which replaces the public key in the certificate with a new one. Unfortunately, now the client app has to be updated due to what is essentially a server configuration change. This is especially problematic if the server is not under the app developer's control, for example if it is a third party web service. This approach also has issues if the app has to talk to arbitrary servers such as a web browser or email app.
+
+In order to address these downsides, servers are typically configured with certificates from well known issuers called Certificate Authorities (CAs). The host platform generally contains a list of well known CAs that it trusts. As of Android 8.0 (API level 26), Android contained over 100 CAs that are updated in each release and do not change from device to device. Similar to a server, a CA has a certificate and a private key. When issuing a certificate for a server, the CA signs the server certificate using its private key. The client can then verify that the server has a certificate issued by a CA known to the platform.
+
+However, while solving some problems, using CAs introduces another. Because the CA issues certificates for many servers, you still need some way to make sure you are talking to the server you want. To address this, the certificate issued by the CA identifies the server either with a specific name such as gmail.com or a wildcarded set of hosts such as *.google.com.
+
+The following example will make these concepts a little more concrete. In the snippet below from a command line, the openssl tool's s_client command looks at Wikipedia's server certificate information. It specifies port 443 because that is the default for HTTPS. The command sends the output of openssl s_client to openssl x509, which formats information about certificates according to the X.509 standard. Specifically, the command asks for the subject, which contains the server name information, and the issuer, which identifies the CA.
+
+
+$ openssl s_client -connect wikipedia.org:443 | openssl x509 -noout -subject -issuer
+subject= /serialNumber=sOrr2rKpMVP70Z6E9BT5reY008SJEdYv/C=US/O=*.wikipedia.org/OU=GT03314600/OU=See www.rapidssl.com/resources/cps (c)11/OU=Domain Control Validated - RapidSSL(R)/CN=*.wikipedia.org
+issuer= /C=US/O=GeoTrust, Inc./CN=RapidSSL CA
+You can see that the certificate was issued for servers matching *.wikipedia.org by the RapidSSL CA.
+
+An HTTPS example
+Assuming you have a web server with a certificate issued by a well known CA, you can make a secure request with code as simple this:
+
+Kotlin
+Java
+
+val url = URL("https://wikipedia.org")
+val urlConnection: URLConnection = url.openConnection()
+val inputStream: InputStream = urlConnection.getInputStream()
+copyInputStreamToOutputStream(inputStream, System.out)
+Yes, it really can be that simple. If you want to tailor the HTTP request, you can cast to an HttpURLConnection. The Android documentation for HttpURLConnection has further examples about how to deal with request and response headers, posting content, managing cookies, using proxies, caching responses, and so on. But in terms of the details for verifying certificates and hostnames, the Android framework takes care of it for you through these APIs. This is where you want to be if at all possible. That said, below are some other considerations.
+
+Common problems verifying server certificates
+Suppose instead of receiving the content from getInputStream(), it throws an exception:
+
+
+javax.net.ssl.SSLHandshakeException: java.security.cert.CertPathValidatorException: Trust anchor for certification path not found.
+        at org.apache.harmony.xnet.provider.jsse.OpenSSLSocketImpl.startHandshake(OpenSSLSocketImpl.java:374)
+        at libcore.net.http.HttpConnection.setupSecureSocket(HttpConnection.java:209)
+        at libcore.net.http.HttpsURLConnectionImpl$HttpsEngine.makeSslConnection(HttpsURLConnectionImpl.java:478)
+        at libcore.net.http.HttpsURLConnectionImpl$HttpsEngine.connect(HttpsURLConnectionImpl.java:433)
+        at libcore.net.http.HttpEngine.sendSocketRequest(HttpEngine.java:290)
+        at libcore.net.http.HttpEngine.sendRequest(HttpEngine.java:240)
+        at libcore.net.http.HttpURLConnectionImpl.getResponse(HttpURLConnectionImpl.java:282)
+        at libcore.net.http.HttpURLConnectionImpl.getInputStream(HttpURLConnectionImpl.java:177)
+        at libcore.net.http.HttpsURLConnectionImpl.getInputStream(HttpsURLConnectionImpl.java:271)
+This can happen for several reasons, including:
+
+The CA that issued the server certificate was unknown
+The server certificate wasn't signed by a CA, but was self signed
+The server configuration is missing an intermediate CA
+The following sections discuss how to address these problems while keeping your connection to the server secure.
+
+Unknown certificate authority
+In this case, the SSLHandshakeException occurs because you have a CA that isn't trusted by the system. It could be because you have a certificate from a new CA that isn't yet trusted by Android or your app is running on an older version without the CA. More often a CA is unknown because it isn't a public CA, but a private one issued by an organization such as a government, corporation, or education institution for their own use.
+
+Fortunately, you can teach your application to trust custom CAs by configuring your application's Network Security Config, without needing to modify the code inside your application.
+
+Caution: Many web sites describe a poor alternative solution which is to install a TrustManager that does nothing. If you do this you might as well not be encrypting your communication, because anyone can attack your users at a public Wi-Fi hotspot by using DNS tricks to send your users' traffic through a proxy of their own that pretends to be your server. The attacker can then record passwords and other personal data. This works because the attacker can generate a certificate and—without a TrustManager that actually validates that the certificate comes from a trusted source—your app could be talking to anyone. So don't do this, not even temporarily. You can always make your app trust the issuer of the server's certificate, so just do it.
+
+Self-signed server certificate
+The second case of SSLHandshakeException is due to a self-signed certificate, which means the server is behaving as its own CA. This is similar to an unknown certificate authority, so you can use the same approach from the previous section.
+
+To have your application trust your own self-signed certificates, you can also configure your application's Network Security Config.
+
+Missing intermediate certificate authority
+The third case of SSLHandshakeException occurs due to a missing intermediate CA. Most public CAs don't sign server certificates directly. Instead, they use their main CA certificate, referred to as the root CA, to sign intermediate CAs. They do this so the root CA can be stored offline to reduce risk of compromise. However, operating systems like Android typically trust only root CAs directly, which leaves a short gap of trust between the server certificate—signed by the intermediate CA—and the certificate verifier, which knows the root CA. To solve this, the server doesn't send the client only it's certificate during the SSL handshake, but a chain of certificates from the server CA through any intermediates necessary to reach a trusted root CA.
+
+To see what this looks like in practice, here's the mail.google.com certificate chain as viewed by the openssl s_client command:
+
+
+$ openssl s_client -connect mail.google.com:443
+---
+Certificate chain
+ 0 s:/C=US/ST=California/L=Mountain View/O=Google LLC/CN=mail.google.com
+   i:/C=ZA/O=Thawte Consulting (Pty) Ltd./CN=Thawte SGC CA
+ 1 s:/C=ZA/O=Thawte Consulting (Pty) Ltd./CN=Thawte SGC CA
+   i:/C=US/O=VeriSign, Inc./OU=Class 3 Public Primary Certification Authority
+---
+This shows that the server sends a certificate for mail.google.com issued by the Thawte SGC CA, which is an intermediate CA, and a second certificate for the Thawte SGC CA issued by a Verisign CA, which is the primary CA that's trusted by Android.
+
+However, it is not uncommon to configure a server to not include the necessary intermediate CA. For example, here is a server that can cause an error in Android browsers and exceptions in Android apps:
+
+
+$ openssl s_client -connect egov.uscis.gov:443
+---
+Certificate chain
+ 0 s:/C=US/ST=District Of Columbia/L=Washington/O=U.S. Department of Homeland Security/OU=United States Citizenship and Immigration Services/OU=Terms of use at www.verisign.com/rpa (c)05/CN=egov.uscis.gov
+   i:/C=US/O=VeriSign, Inc./OU=VeriSign Trust Network/OU=Terms of use at https://www.verisign.com/rpa (c)10/CN=VeriSign Class 3 International Server CA - G3
+---
+What is interesting to note here is that visiting this server in most desktop browsers does not cause an error like a completely unknown CA or self-signed server certificate would cause. This is because most desktop browsers cache trusted intermediate CAs over time. Once a browser has visited and learned about an intermediate CA from one site, it won't need to have the intermediate CA included in the certificate chain the next time.
+
+Some sites do this intentionally for secondary web servers used to serve resources. For example, they might have their main HTML page served by a server with a full certificate chain, but have servers for resources such as images, CSS, or JavaScript not include the CA, presumably to save bandwidth. Unfortunately, sometimes these servers might be providing a web service you are trying to call from your Android app, which is not as forgiving.
+
+To fix this issue, configure the server to include the intermediate CA in the server chain. Most CAs provide documentation on how to do this for all common web servers.
+
+Warnings about using SSLSocket directly
+So far, the examples have focused on HTTPS using HttpsURLConnection. Sometimes apps need to use SSL separate from HTTP. For example, an email app might use SSL variants of SMTP, POP3, or IMAP. In those cases, the app would want to use SSLSocket directly, much the same way that HttpsURLConnection does internally.
+
+The techniques described so far to deal with certificate verification issues also apply to SSLSocket. In fact, when using a custom TrustManager, what is passed to HttpsURLConnection is an SSLSocketFactory. So if you need to use a custom TrustManager with an SSLSocket, follow the same steps and use that SSLSocketFactory to create your SSLSocket.
+
+Caution: SSLSocket does not perform hostname verification. It is up to your app to do its own hostname verification, preferably by calling getDefaultHostnameVerifier() with the expected hostname. Further beware that HostnameVerifier.verify() doesn't throw an exception on error but instead returns a boolean result that you must explicitly check.
+
+Denylisting
+SSL relies heavily on CAs to issue certificates to only the properly verified owners of servers and domains. In rare cases, CAs are either tricked or, in the case of Comodo or DigiNotar, breached, resulting in the certificates for a hostname to be issued to someone other than the owner of the server or domain.
+
+In order to mitigate this risk, Android has the ability to add certain certificates or even whole CAs to a denylist. While this list was historically built into the operating system, starting in Android 4.2 this list can be remotely updated to deal with future compromises.
+
+Pinning
+Caution: Certificate Pinning is not recommended for Android applications due to the high risk of future server configuration changes, such as changing to another Certificate Authority, rendering the application unable to connect to the server without receiving a client software update.
+
+If you wish to pin your application, it is critical to include multiple backup pins, including at least one key that's fully in your control, and a sufficiently short expiration period to prevent compatibility issues. The Network Security Config provides pinning with these capabilities.
+
+Client certificates
+This article has focused on the user of SSL to secure communications with servers. SSL also supports the notion of client certificates that allow the server to validate the identity of a client. While beyond the scope of this article, the techniques involved are similar to specifying a custom TrustManager.
+
+Nogotofail: A network traffic security testing tool 
+Nogotofail is a tool gives you an easy way to confirm that your apps are safe against known TLS/SSL vulnerabilities and misconfigurations. It's an automated, powerful, and scalable tool for testing network security issues on any device whose network traffic could be made to go through it.
+
+Nogotofail is useful for three main use cases:
+
+Finding bugs and vulnerabilities.
+Verifying fixes and watching for regressions.
+Understanding what applications and devices are generating what traffic.
+Nogotofail works for Android, iOS, Linux, Windows, Chrome OS, OSX, in fact any device you use to connect to the Internet. There’s an easy-to-use client to configure the settings and get notifications on Android and Linux, as well as the attack engine itself which can be deployed as a router, VPN server, or proxy.
+
+You can access the tool at the Nogotofail open source project.
